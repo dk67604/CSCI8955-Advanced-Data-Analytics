@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html>
+
+<meta charset="utf-8">
+<title>Advanced Data Analytics</title>
+<head>
+    <link type="text/css" rel="stylesheet" href="/stylesheets/page.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script type="text/javascript">
+        
+        $(document).ready(function(){
+            $("form#fileUploadForm").submit(function(event){
+                var name = document.getElementById('avatar');
+                alert(name.files.item(0).name)
+                event.preventDefault();
+                // Get form
+                $("#awsupload").prop("disabled", true);
+
+                // Create an FormData object
+                var formdata = new FormData(this);
+
+                $.ajax({
+                    type: "POST",
+                    enctype: 'multipart/form-data',
+                    url: "http://localhost:3000/users/upload",
+                    data: formdata,
+                    processData: false,
+                    contentType: false,
+                    async: false,
+                    cache: false,
+                    timeout: 600000,
+                    success: function (data) {
+
+                        $("#result").text(data);
+
+
+                        console.log("SUCCESS : ", data);
+                        $("#awsupload").prop("disabled", false);
+
+                    },
+                    error: function (e) {
+
+                        $("#result").text(e.responseText);
+
+                        console.log("ERROR : ", e);
+                        $("#awsupload").prop("disabled", false);
+
+                    }
+                });
+            });
+        });
+        $(document).ready(function(){
+            $("form#evaluateForm").submit(function(event){
+
+                event.preventDefault();
+                // Get form
+                $("#evaluate").prop("disabled", true);
+                var dataset=document.getElementById('dataset');
+                var datasetValue=dataset.options[dataset.selectedIndex].value;
+                var model=document.getElementById('model');
+                var modelValue=model.options[model.selectedIndex].value;
+                alert(datasetValue);
+                alert(modelValue);
+                var evaluatedata={
+                    'model':modelValue,
+                    'dataset':datasetValue
+                }
+                $.ajax({
+                    type: "POST",
+                    url: "http://localhost:3000/users/evaluate",
+                    data: evaluatedata,
+                    processData: false,
+                    contentType: false,
+                    async: false,
+                    cache: false,
+                    timeout: 600000,
+                    success: function (data) {
+
+                        $("#result").text(data);
+                        console.log("SUCCESS : ", data);
+                        $("#evaluate").prop("disabled", false);
+
+                    },
+                    error: function (e) {
+
+                        $("#result").text(e.responseText);
+                        console.log("ERROR : ", e);
+                        $("#evaluate").prop("disabled", false);
+
+                    }
+                });
+            });
+        });
+
+
+    </script>
+</head>
+
+<body>
+
+<div id="container">
+
+    <div id="header" style="background-color:#FFFFFF;height:80px;text-align:center;width:100%;">
+        <p><img src="/images/banner.png"  height=80px style="float:left;" />
+        </p>
+    </div>
+
+    <div class="gap">
+    </div>
+    <div class="gap">
+    </div>
+
+    <div id="Left-Menu" style="background-color:black;height:660px;width:15%;float:left;">
+        <br>
+        <ul>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+            <li style="margin-left:20px;"><a href="#" style="width:150px"></a></li>
+        </ul>
+    </div>
+
+    <div style="height:400px;width:.4%;float:left;">
+    </div>
+
+    <div id="content" style="background-color:#FFFFFF;height:660px;width:84.6%;float:left;">
+        <h3 align="center">Advanced Data Analytics - Final Project! </h3>
+        <br />
+        <h2 align="center">Object Detection & Model Comparison!! </h2>
+
+        <form  method="post" enctype="multipart/form-data" id="fileUploadForm">
+            <br />
+            &nbsp; &nbsp; &nbsp; &nbsp;
+            <input type="file" name="avatar"  id="avatar">
+            <input type="submit" name="awsupload" id="awsupload" value="Upload to Amazon S3">
+
+        </form>
+        <span id="result"></span>
+
+
+
+        <div class="gap"></div><div class="gap"></div><div class="gap"></div><div class="gap"></div>
+        <form   id="evaluateForm">
+        <table>
+
+            <tr>
+                <th>Select Dataset </th>
+
+                <th>Select Model </th>
+            </tr>
+            <tr>
+                <td><select id="dataset">
+                    <option value="Dataset1">Dataset 1</option>
+                    <option value="Dataset1">Dataset 2</option>
+                    <option value="Dataset1">Dataset 3</option>
+                    <option value="Dataset1">Dataset 4</option>
+                </select></td>
+                
+                <td><select id="model">
+                    <option value="Model1">Model 1</option>
+                    <option value="Model2">Model 2</option>
+                    <option value="Model3">Model 3</option>
+                    <option value="Model4">Model 4</option>
+                </select></td>
+            </tr>
+
+        </table>
+        <input type="submit" name="evaluate" id="evaluate" value="Start evaluation">
+        </form>
+    </div>
+    <div style="height:650px"></div>
+    <div id="footer" style="background-color:black;text-align:center;height:30px">
+        <p style="color:white">Copyright @ Team En!gM@</p>
+    </div>
+
+</div>
+
+</body>
+</html>
