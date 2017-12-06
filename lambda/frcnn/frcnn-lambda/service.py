@@ -131,23 +131,23 @@ def handler(event, context):
             bboxes[cls_name].append(
                 [C.rpn_stride * x, C.rpn_stride * y, C.rpn_stride * (x + w), C.rpn_stride * (y + h)])
             probs[cls_name].append(np.max(P_cls[0, ii, :]))
+    final_data = []
+    output = {}
     for key in bboxes:
+        data = {}
         bbox = np.array(bboxes[key])
         new_boxes, new_probs = roi_helpers.non_max_suppression_fast(bbox, np.array(probs[key]), overlap_thresh=0.5)
-    data = {}
-    final_data = {}
-    for i in range(new_boxes.shape[0]):
-        data['bbox' + '_' + str(i)] = {}
-        data['bbox' + '_' + str(i)]['x'] = str(new_boxes[i][0])
-        data['bbox' + '_' + str(i)]['y'] = str(new_boxes[i][1])
-        data['bbox' + '_' + str(i)]['w'] = str(new_boxes[i][2])
-        data['bbox' + '_' + str(i)]['z'] = str(new_boxes[i][3])
-        data['bbox' + '_' + str(i)]['prob'] = str(new_probs[i])
-    final_data['rpn'] = data
-    final_data['bboxes'] = bboxes
-    final_json = json.dumps(final_data)
-    output = {}
-    output['body'] = final_json
+        data[key] = {}
+        for i in range(new_boxes.shape[0]):
+            data[key]['x'] = str(new_boxes[i][0])
+            data[key]['y'] = str(new_boxes[i][1])
+            data[key]['w'] = str(new_boxes[i][2])
+            data[key]['z'] = str(new_boxes[i][3])
+            data[key]['prob'] = str(new_probs[i])
+            final_data.append(data)
+
+    output['bboxes'] = bboxes
+    output['rpn'] = final_data
     timestamp = int(time.time() * 1000)
     table = dynamodb.Table(os.environ['DYNAMODB_TABLE'])
     result = table.update_item(
@@ -175,4 +175,3 @@ def handler(event, context):
     }
 
     return response
-
