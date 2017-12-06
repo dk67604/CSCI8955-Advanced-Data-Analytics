@@ -36,11 +36,9 @@ def claculate_bbox_and_prob(results,height,width):
     det_ymin = results[0][:, 3]
     det_xmax = results[0][:, 4]
     det_ymax = results[0][:, 5]
-
     # Get detections with confidence higher than 0.6.
     top_indices = [i for i, conf in enumerate(det_conf) if conf >= 0.6]
     top_conf = det_conf[top_indices]
-    print top_conf.shape
     top_label_indices = det_label[top_indices].tolist()
     top_xmin = det_xmin[top_indices]
     top_ymin = det_ymin[top_indices]
@@ -58,6 +56,8 @@ def claculate_bbox_and_prob(results,height,width):
         ymin = int(round(top_ymin[i] * height))
         xmax = int(round(top_xmax[i] * width))
         ymax = int(round(top_ymax[i] * height))
+	label = int(top_label_indices[i])
+        label_name = voc_classes[label - 1]
         score = top_conf[i]
         bboxes[label_name].append([xmin, ymin, xmax, ymax])
         probs[label_name].append(decimal.Decimal(score*100))
@@ -138,4 +138,3 @@ def lambda_handler(event, context):
     }
 
     return response
-
