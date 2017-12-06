@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from sklearn.metrics import average_precision_score
 import json
 import os
+import math
 
 config = botocore.config.Config(connect_timeout=300, read_timeout=300)
 lamda_client = boto3.client('lambda', region_name='us-east-1', config=config)
@@ -24,12 +25,13 @@ class DecimalEncoder(json.JSONEncoder):
             return int(obj)
         return super(DecimalEncoder, self).default(obj)
 
+
 def format_img_size(img, C):
     """ formats the image size based on config """
     img_min_side = float(C.im_size)
     (height, width, _) = img.shape
-    new_width=1
-    new_height=1
+    new_width = 1
+    new_height = 1
     if width <= height:
         ratio = img_min_side / width
         new_height = int(ratio * height)
@@ -41,7 +43,8 @@ def format_img_size(img, C):
     fx = width / float(new_width)
     fy = height / float(new_height)
     img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
-    return img, ratio,fx,fy
+    return img, ratio, fx, fy
+
 
 def get_annotaion(annot_name):
     client.download_file('adaproject', annot_name, '/tmp/' + annot_name + '.xml')
@@ -174,7 +177,6 @@ def url_to_image(url):
 
 
 def lambda_handler(event, context):
-
     table = dynamodb.Table(os.environ['DYNAMODB_TABLE'])
     result = table.get_item(
         Key={
@@ -198,35 +200,37 @@ def lambda_handler(event, context):
         X, ratio, fx, fy = format_img_size(img, C)
         all_dets = []
         temp = dbresult['result']
-        temp_body = temp['body']
-        count = 0
-        temp = json.loads(temp_body)
-
-        for item in temp['rpn']:
-            count += 1
-        temp_box = np.zeros((count, 4), dtype=np.int64)
-        temp_prob = np.zeros(shape=(2), dtype=np.float64)
         index = 0
+        rpn_class = {}
+        rpn_prob = {}
         for item in temp['rpn']:
-            temp1 = temp['rpn'][item]
-            for i in temp1:
-                if i == 'x':
-                    temp_box[index][0] = temp1[i]
-                if i == 'y':
-                    temp_box[index][1] = temp1[i]
-                if i == 'w':
-                    temp_box[index][2] = temp1[i]
-                if i == 'z':
-                    temp_box[index][3] = temp1[i]
-                if i == 'prob':
-                    temp_prob[index] = temp1[i]
-            index += 1
+            for key in item:
+                temp_box = np.zeros((1, 4), dtype=np.int64)
+                temp_prob = np.zeros(shape=(1), dtype=np.float64)
+                for i in item[key]:
+
+                    temp1 = item[key]
+                    if i == 'x':
+                        temp_box[index][0] = temp1[i]
+                    if i == 'y':
+                        temp_box[index][1] = temp1[i]
+                    if i == 'w':
+                        temp_box[index][2] = temp1[i]
+                    if i == 'z':
+                        temp_box[index][3] = temp1[i]
+                    if i == 'prob':
+                        temp_prob[index] = temp1[i]
+
+                rpn_class[key] = temp_box
+                rpn_prob[key] = temp_prob
+        print rpn_class
         key_boxes = temp['bboxes']
         T = {}
         P = {}
         real_dets = []
-        
-        for key in key_boxes:
+        for key in rpn_class:
+            temp_box = rpn_class[key]
+            temp_prob = rpn_prob[key]
             for jk in range(temp_box.shape[0]):
                 (x1, y1, x2, y2) = temp_box[jk, :]
                 det = {'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2, 'class': key, 'prob': temp_prob[jk]}
@@ -249,6 +253,7 @@ def lambda_handler(event, context):
                 cv2.rectangle(img, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
                               (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (255, 255, 255), -1)
                 cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
+
         maP = None
         if 'annotation' in event:
             annot_name = event['annotation']
@@ -261,11 +266,15 @@ def lambda_handler(event, context):
                 T[key].extend(t[key])
                 P[key].extend(p[key])
             all_aps = []
+            count = 0
             for key in T.keys():
                 ap = average_precision_score(T[key], P[key])
                 print('{} AP: {}'.format(key, ap))
+
+                count += 1
                 all_aps.append(ap)
-            maP = np.mean(np.array(all_aps))
+            maP = np.nansum(np.array(all_aps))
+            maP=maP/count
         if maP is not None:
             detection_result['maP'] = maP
         detection_result['real_dets'] = real_dets
@@ -273,7 +282,7 @@ def lambda_handler(event, context):
         cv2.imwrite('/tmp/' + basename + '_final' + '.jpg', image_to_write)
         client.upload_file('/tmp/' + basename + '_final' + '.jpg', 'adaproject', basename + '_final.jpg')
         detection_result['image'] = basename + '_final.jpg'
-        detection_result['status']=status
+        detection_result['status'] = status
         detection_result['requestId'] = event['requestId']
         # create a response
         response = {
@@ -285,7 +294,7 @@ def lambda_handler(event, context):
         return response
     else:
         detection_result['status'] = status
-        detection_result['requestId']=event['requestId']
+        detection_result['requestId'] = event['requestId']
         response = {
             "statusCode": 200,
             "body": json.dumps(detection_result,
