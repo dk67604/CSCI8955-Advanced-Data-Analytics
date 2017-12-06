@@ -4,19 +4,46 @@ import cv2
 import boto3
 import pickle
 import botocore
-import time
-import os
 from keras_frcnn import config
-from sklearn.metrics import average_precision_score
-import json
 import decimal
 import xml.etree.ElementTree as ET
+from sklearn.metrics import average_precision_score
+import json
+import os
+import math
 
 config = botocore.config.Config(connect_timeout=300, read_timeout=300)
 lamda_client = boto3.client('lambda', region_name='us-east-1', config=config)
 lamda_client.meta.events._unique_id_handlers['retry-config-lambda']['handler']._checker.__dict__['_max_attempts'] = 0
 client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
+
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return int(obj)
+        return super(DecimalEncoder, self).default(obj)
+
+
+def format_img_size(img, C):
+    """ formats the image size based on config """
+    img_min_side = float(C.im_size)
+    (height, width, _) = img.shape
+    new_width = 1
+    new_height = 1
+    if width <= height:
+        ratio = img_min_side / width
+        new_height = int(ratio * height)
+        new_width = int(img_min_side)
+    else:
+        ratio = img_min_side / height
+        new_width = int(ratio * width)
+        new_height = int(img_min_side)
+    fx = width / float(new_width)
+    fy = height / float(new_height)
+    img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+    return img, ratio, fx, fy
 
 
 def get_annotaion(annot_name):
@@ -69,9 +96,10 @@ def calc_iou(a, b):
     return float(area_i) / float(area_u + 1e-6)
 
 
-def get_map(pred, gt):
+def get_map(pred, gt, f):
     T = {}
     P = {}
+    fx, fy = f
 
     for bbox in gt:
         bbox['bbox_matched'] = False
@@ -95,10 +123,10 @@ def get_map(pred, gt):
 
         for gt_box in gt:
             gt_class = gt_box['class']
-            gt_x1 = gt_box['x1']
-            gt_x2 = gt_box['x2']
-            gt_y1 = gt_box['y1']
-            gt_y2 = gt_box['y2']
+            gt_x1 = gt_box['x1'] / fx
+            gt_x2 = gt_box['x2'] / fx
+            gt_y1 = gt_box['y1'] / fy
+            gt_y2 = gt_box['y2'] / fy
             gt_seen = gt_box['bbox_matched']
             if gt_class != pred_class:
                 continue
@@ -123,20 +151,18 @@ def get_map(pred, gt):
             T[gt_box['class']].append(1)
             P[gt_box['class']].append(0)
 
+    # import pdb
+    # pdb.set_trace()
     return T, P
 
 
-class DecimalEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, decimal.Decimal):
-            return int(obj)
-        return super(DecimalEncoder, self).default(obj)
+def get_real_coordinates(ratio, x1, y1, x2, y2):
+    real_x1 = int(round(x1 // ratio))
+    real_y1 = int(round(y1 // ratio))
+    real_x2 = int(round(x2 // ratio))
+    real_y2 = int(round(y2 // ratio))
 
-
-def format_img(img):
-    """ formats an image for model prediction based on config """
-    img = cv2.resize(img, (300, 300), interpolation=cv2.INTER_NEAREST)
-    return img
+    return (real_x1, real_y1, real_x2, real_y2)
 
 
 def url_to_image(url):
@@ -166,47 +192,73 @@ def lambda_handler(event, context):
         class_mapping = C.class_mapping
         class_mapping = {v: k for k, v in class_mapping.items()}
         class_to_color = {class_mapping[v]: np.random.randint(0, 255, 3) for v in class_mapping}
-        detection = dbresult['result']
-        bboxes = detection['bboxes']
-        probs = detection['probs']
         url = event['url']
         basename = url.rsplit('/', 1)[-1].split(".")[0]
         img = url_to_image(url)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        real_dets = []
+
+        X, ratio, fx, fy = format_img_size(img, C)
+        all_dets = []
+        temp = dbresult['result']
+        index = 0
+        rpn_class = {}
+        rpn_prob = {}
+        for item in temp['rpn']:
+            for key in item:
+                temp_box = np.zeros((1, 4), dtype=np.int64)
+                temp_prob = np.zeros(shape=(1), dtype=np.float64)
+                for i in item[key]:
+
+                    temp1 = item[key]
+                    if i == 'x':
+                        temp_box[index][0] = temp1[i]
+                    if i == 'y':
+                        temp_box[index][1] = temp1[i]
+                    if i == 'w':
+                        temp_box[index][2] = temp1[i]
+                    if i == 'z':
+                        temp_box[index][3] = temp1[i]
+                    if i == 'prob':
+                        temp_prob[index] = temp1[i]
+
+                rpn_class[key] = temp_box
+                rpn_prob[key] = temp_prob
+        print rpn_class
+        key_boxes = temp['bboxes']
         T = {}
         P = {}
-        for key in bboxes:
-            bbox = np.array(bboxes[key])
-            lower_key = key.lower()
-            new_probs = np.array(probs[key])
-            print new_probs
-            for jk in range(bbox.shape[0]):
-                (real_x1, real_y1, real_x2, real_y2) = bbox[jk, :]
+        real_dets = []
+        for key in rpn_class:
+            temp_box = rpn_class[key]
+            temp_prob = rpn_prob[key]
+            for jk in range(temp_box.shape[0]):
+                (x1, y1, x2, y2) = temp_box[jk, :]
+                det = {'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2, 'class': key, 'prob': temp_prob[jk]}
+                (real_x1, real_y1, real_x2, real_y2) = get_real_coordinates(ratio, x1, y1, x2, y2)
                 real_det = {'x1': real_x1, 'x2': real_x2, 'y1': real_y1, 'y2': real_y2, 'class': key,
-                            'prob': new_probs[jk]}
-                cv2.rectangle(img, (real_x1, real_y1), (real_x2, real_y2), (
-                int(class_to_color[lower_key][0]), int(class_to_color[lower_key][1]),
-                int(class_to_color[lower_key][2])), 2)
+                            'prob': temp_prob[jk]}
+                cv2.rectangle(img, (real_x1, real_y1), (real_x2, real_y2),
+                              (int(class_to_color[key][0]), int(class_to_color[key][1]), int(class_to_color[key][2])),
+                              2)
 
-                textLabel = '{}: {}'.format(lower_key, int(new_probs[jk]))
-
+                textLabel = '{}: {}'.format(key, float(100 * temp_prob[jk]))
+                all_dets.append(det)
                 real_dets.append(real_det)
 
-                (retval, baseLine) = cv2.getTextSize(textLabel, cv2.FONT_HERSHEY_PLAIN, 1, 1)
-                textOrg = (real_x1, real_y1 + 10)
-
+                (retval, baseLine) = cv2.getTextSize(textLabel, cv2.FONT_HERSHEY_COMPLEX, 1, 1)
+                textOrg = (real_x1, real_y1 - 0)
+                print textOrg
                 cv2.rectangle(img, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
                               (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (0, 0, 0), 2)
                 cv2.rectangle(img, (textOrg[0] - 5, textOrg[1] + baseLine - 5),
                               (textOrg[0] + retval[0] + 5, textOrg[1] - retval[1] - 5), (255, 255, 255), -1)
-                cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 1)
+                cv2.putText(img, textLabel, textOrg, cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 1)
 
         maP = None
         if 'annotation' in event:
             annot_name = event['annotation']
             annotation_data = get_annotaion(annot_name)
-            t, p = get_map(real_dets, annotation_data['bboxes'])
+            t, p = get_map(all_dets, annotation_data['bboxes'], (fx, fy))
             for key in t.keys():
                 if key not in T:
                     T[key] = []
@@ -214,11 +266,15 @@ def lambda_handler(event, context):
                 T[key].extend(t[key])
                 P[key].extend(p[key])
             all_aps = []
+            count = 0
             for key in T.keys():
                 ap = average_precision_score(T[key], P[key])
                 print('{} AP: {}'.format(key, ap))
+
+                count += 1
                 all_aps.append(ap)
-            maP = np.mean(np.array(all_aps))
+            maP = np.nansum(np.array(all_aps))
+            maP=maP/count
         if maP is not None:
             detection_result['maP'] = maP
         detection_result['real_dets'] = real_dets
