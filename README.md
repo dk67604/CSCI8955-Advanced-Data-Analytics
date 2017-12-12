@@ -7,14 +7,14 @@
 - We created a pipeline using AWS components for an end-to-end application which has advantage of scalability and extendable to 
 any deep learning model. Presently it is supported for Faster-RCNN and SSD.
 - Important files to look for implementation:
-  /lambda/frcnn
-    - frcnn-detection/lambda_function.py
-    - frcnn-lambda/service.py
-    - frcnn-preprocessing/lambda_function.py
-  /lambda/ssd
-    - ssd-detection/lambda_function.py
-    - ssd-lambda/lambda_function.py
-    - ssd-preprocessing/lambda_function.py
+  - /lambda/frcnn
+     - frcnn-detection/lambda_function.py
+     - frcnn-lambda/service.py
+     - frcnn-preprocessing/lambda_function.py
+  - /lambda/ssd
+     - ssd-detection/lambda_function.py
+     - ssd-lambda/lambda_function.py
+     - ssd-preprocessing/lambda_function.py
 
 ### Requirements:
     - Python 2.7
