@@ -1,5 +1,5 @@
 # CSCI8955-Advanced-Data-Analytics
-## Scalable Deep Learning Object Detection
+## Scalable Deep Learning Object Detection & Model Comparison
 - This project has following features :
   1) AWS serverless architecture
   2) Lambda function integerated with Keras, Tensorflow and Python Libraries.
