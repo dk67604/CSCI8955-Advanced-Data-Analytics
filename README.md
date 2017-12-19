@@ -2,10 +2,9 @@
 ## Scalable Deep Learning Object Detection & Model Comparison
 - This project has following features :
   1) AWS serverless architecture
-  2) Lambda function integerated with Keras, Tensorflow and Python Libraries.
+  2) Lambda function integrated with Keras, Tensorflow and Python Libraries.
   3) User Interface for uploading an image and evaluate the result on different models.
-- We created a pipeline using AWS components for an end-to-end application which has advantage of scalability and extendable to 
-any deep learning model. Presently it is supported for Faster-RCNN and SSD.
+- We created a pipeline using AWS components for an end-to-end application which has the advantage of the scalability and extendable to any deep learning model. Presently it is supported for Faster-RCNN and SSD.
 - Important files to look for implementation:
   - /lambda/frcnn
      - frcnn-detection/lambda_function.py
